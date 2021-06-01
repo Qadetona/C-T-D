@@ -1,17 +1,22 @@
-var counterTotalValidMoves = 0;
-var currentSelection = new Object();
-var existingPoints = [];
-var moveSuccessfullyCompleted = null;
-var node = document.getElementById('app');
-var nodeFirstMove = new Object();
-var nodeLastMove = new Object();
-var nodeOrigination = "";
-var proposedIntermediatePoints = [];
-var turn = 1;
-var gameOver;
+////////////////////////////////////////////////////////////////////////////
+// Variables
+////////////////////////////////////////////////////////////////////////////
 
+let node = document.getElementById('app');
+let counterTotalValidMoves = 0;
+let currentSelection = new Object();
+let existingPoints = [];
+let nodeFirstMove = new Object();
+let nodeLastMove = new Object();
+let nodeOrigination = "";
+let proposedIntermediatePoints = [];
+let whosTurn = 1;
+let lineMade = 0;
+var y;
 
-
+////////////////////////////////////////////////////////////////////////////
+// API , Subscribe to request and send response
+////////////////////////////////////////////////////////////////////////////
 const app = Elm.Main.embed(node, {
     api: 'Client',
     hostname: '',
@@ -23,7 +28,21 @@ app.ports.startTimer.subscribe((int) => {
     }, 10000);
 });
 
+app.ports.request.subscribe((message) => {
 
+    //Take the message and turn the string into JSON
+    message = JSON.parse(message);
+
+    //Get the JSON response from the function based on the request json object
+    var responseObject = executerequest(message);
+
+    // Parse the message to determine a response, then respond:
+    app.ports.response.send(responseObject);
+});
+
+////////////////////////////////////////////////////////////////////////////
+// Get point, Get line
+////////////////////////////////////////////////////////////////////////////
 function getLine(start, end) 
 {
 
@@ -46,21 +65,15 @@ function getPoint (x,y)
     return thePoint;
 };
 
-
-
 function containsPoint(toCheck) 
 {
 
-    // console.log(JSON.parse(JSON.stringify(existingPoints)))
-    // console.log(JSON.parse(JSON.stringify(proposedIntermediatePoints)))
     for (var x = 0; x < existingPoints.length; x++) 
     {
         
         var p = existingPoints[x];
         var checkThisPoint = "Checking " + p.x + "," + p.y;
         checkThisPoint += " -> " + toCheck.x + "," + toCheck.y;
-
-        // console.log(checkThisPoint + " contains");
 
         if (p.x == toCheck.x && p.y == toCheck.y) 
         {
@@ -71,11 +84,13 @@ function containsPoint(toCheck)
     return false;
 
 }
-
-function isValidMovementChecksInitial(startPoint, endPoint) 
+////////////////////////////////////////////////////////////////////////////
+// Check if moves valid
+////////////////////////////////////////////////////////////////////////////
+function checkMoveA(startPoint, endPoint) 
 {
-    var lessOfX = Math.abs(startPoint.x - endPoint.x);
-    var lessOfY = Math.abs(startPoint.y - endPoint.y);
+    var differenceX = Math.abs(startPoint.x - endPoint.x);
+    var differenceY = Math.abs(startPoint.y - endPoint.y);
 
     //If the proposed end point is already in the line, that is invalid
     if (containsPoint(endPoint)) 
@@ -85,7 +100,7 @@ function isValidMovementChecksInitial(startPoint, endPoint)
     }
 
     //If the proposed line is not at at a 0, 45, or 90 degree angle, it is invalid
-    if (lessOfX / lessOfY !== 0 && lessOfX / lessOfY !== 1 && lessOfX / lessOfY !== Infinity) 
+    if (differenceX / differenceY !== 0 && differenceX / differenceY !== 1 && differenceX / differenceY !== Infinity) 
     {
 
         return false;
@@ -96,41 +111,41 @@ function isValidMovementChecksInitial(startPoint, endPoint)
 
 }
 
-
-
-    
-
-function processIncomingMessage(message) 
+////////////////////////////////////////////////////////////////////////////
+// Excute 'messages' Initialize game and return proper responses
+////////////////////////////////////////////////////////////////////////////
+function executerequest(message) 
 {
 
-    var incomingMessage = message.msg;
-    var incomingBody = message.body;
+    var requestMessage = message.msg;
+    var requestBody = message.body;
 
-    if (incomingMessage == "INITIALIZE") 
+    if (requestMessage == "INITIALIZE") 
     {
 
-        var outgoing = new Object();
+        var response = new Object();
 
-        outgoing.msg = "INITIALIZE";
-        outgoing.body = new Object();
+        response.msg = "INITIALIZE";
+        response.body = new Object();
         
-        outgoing.body.newLine = null;
-        outgoing.body.heading = "Player 1";
-        outgoing.body.message = "Awaiting Player 1's Move";
+        response.body.newLine = null;
+        response.body.heading = "Player 1";
+        response.body.message = "Awaiting Player 1's Move";
     
         currentSelection = null;
-        turn = 1;
-        console.log(outgoing);
+        whosTurn = 1;
+        console.log(response);
     
-        return outgoing;
+        return response;
     }
-
-    else if (incomingMessage == "NODE_CLICKED") 
+//////////////////////////////////////////
+// Node Clicked
+//////////////////////////////////////////
+    else if (requestMessage == "NODE_CLICKED") 
     {
-         //Create an object to use as outgoing
-        var outgoing = new Object();
-
-        outgoing.body = new Object();
+         //Create an object to use as response
+        var response = new Object();
+        response.body = new Object();
     
     
         //If there is no node selected, it means the human wants it as their start node
@@ -140,37 +155,39 @@ function processIncomingMessage(message)
             {
                 
                 //Valid Move
-                outgoing.msg = "VALID_START_NODE";
+                response.msg = "VALID_START_NODE";
     
-                outgoing.body.newLine = null;
-                outgoing.body.heading = "Player " + turn;
-                outgoing.body.message = "Select a second node to complete the line.";
-                //Now we set the current selection to the incoming value
-                currentSelection = incomingBody;
+                response.body.newLine = null;
+                response.body.heading = "Player " + whosTurn;
+                response.body.message = "Select a second node to complete the line.";
+                //Now we set the current selection to the request value
+                currentSelection = requestBody;
+               
             } 
-            else if ((incomingBody.x == nodeFirstMove.x) && (incomingBody.y == nodeFirstMove.y) || (incomingBody.x == nodeLastMove.x) && (incomingBody.y == nodeLastMove.y)) 
+            else if ((requestBody.x == nodeFirstMove.x) && (requestBody.y == nodeFirstMove.y) || (requestBody.x == nodeLastMove.x) && (requestBody.y == nodeLastMove.y)) 
             {
     
-                nodeOrigination = (incomingBody.x == nodeFirstMove.x) && (incomingBody.y == nodeFirstMove.y) ? "nodeEndpointA" : "nodeEndpointB";
+                nodeOrigination = (requestBody.x == nodeFirstMove.x) && (requestBody.y == nodeFirstMove.y) ? "nodeEndpointA" : "nodeEndpointB";
                 
                 //Valid Move
-                outgoing.msg = "VALID_START_NODE";
+                response.msg = "VALID_START_NODE";
     
-                outgoing.body.newLine = null;
-                outgoing.body.heading = "Player " + turn;
-                outgoing.body.message = "Select a second node to complete the line.";
-                //Now we set the current selection to the incoming value
-                currentSelection = incomingBody;
+                response.body.newLine = null;
+                response.body.heading = "Player " + whosTurn;
+                response.body.message = "Select a second node to complete the line.";
+                //Now we set the current selection to the request value
+                currentSelection = requestBody;
+                
             } 
             else 
             {
     
-                //DO nothing. This is just a deselection
-                outgoing.msg = "INVALID_START_NODE";
+                //Deselect
+                response.msg = "INVALID_START_NODE";
     
-                outgoing.body.newLine = null;
-                outgoing.body.heading = "Player " + turn;
-                outgoing.body.message = "Invalid Start Node!";
+                response.body.newLine = null;
+                response.body.heading = "Player " + whosTurn;
+                response.body.message = "Invalid Start Node!";
     
                 currentSelection = null;
     
@@ -180,22 +197,24 @@ function processIncomingMessage(message)
     
     
         //If the chosen end node is the beginning node, we just want to deselect
-        else if (incomingBody.x == currentSelection.x && incomingBody.y == currentSelection.y) 
+        else if (requestBody.x == currentSelection.x && requestBody.y == currentSelection.y) 
         {
            
             //DO nothing. This is just a deselection
-            outgoing.msg = "INVALID_START_NODE";
+            response.msg = "INVALID_START_NODE";
     
-            outgoing.body.newLine = null;
-            outgoing.body.heading = "Player " + turn;
-            outgoing.body.message = "Select a node to start.";
+            response.body.newLine = null;
+            response.body.heading = "Player " + whosTurn;
+            response.body.message = "Select a node to start.";
     
             currentSelection = null;
     
         }
+       
+    
     
         //Check and make sure the movement human wants is valid
-        else if (isValidMovementChecksInitial(currentSelection, incomingBody)) 
+        else if (checkMoveA(currentSelection, requestBody)) 
         {
             var xValues = [];
             var yValues = [];
@@ -215,9 +234,9 @@ function processIncomingMessage(message)
                 existingPoints.push(currentSelection);
             }
     
-            //This will identify lowest variable value, highest variable value, and the absolute difference between current and incoming x's and y's
-            xValues.push(currentSelection.x, incomingBody.x)
-            yValues.push(currentSelection.y, incomingBody.y)
+            //This will identify lowest variable value, highest variable value, and the absolute difference between current and request x's and y's
+            xValues.push(currentSelection.x, requestBody.x)
+            yValues.push(currentSelection.y, requestBody.y)
             xValues.sort(function (a, b) { return a - b });
             yValues.sort(function (a, b) { return a - b });
             xLow = xValues[0];
@@ -257,25 +276,25 @@ function processIncomingMessage(message)
                 }
     
                 //This calculates lines heading 315 degrees 
-                if (yLow !== yHigh && currentSelection.y > incomingBody.y && currentSelection.x < incomingBody.x) 
+                if (yLow !== yHigh && currentSelection.y > requestBody.y && currentSelection.x < requestBody.x) 
                 {
                     intermediatePointY = yHigh - z
                 }
     
                 //This calculates lines heading 45 degrees 
-                if (yLow !== yHigh && currentSelection.y < incomingBody.y && currentSelection.x < incomingBody.x) 
+                if (yLow !== yHigh && currentSelection.y < requestBody.y && currentSelection.x < requestBody.x) 
                 {
                     intermediatePointY = yLow + z
                 }
     
                 //This calculates lines heading 135 degrees 
-                if (yLow !== yHigh && currentSelection.y < incomingBody.y && currentSelection.x > incomingBody.x) 
+                if (yLow !== yHigh && currentSelection.y < requestBody.y && currentSelection.x > requestBody.x) 
                 {
                     intermediatePointY = yHigh - z
                 }
     
                 //This calculates lines heading 225 degrees 
-                if (yLow !== yHigh && currentSelection.y > incomingBody.y && currentSelection.x > incomingBody.x) 
+                if (yLow !== yHigh && currentSelection.y > requestBody.y && currentSelection.x > requestBody.x) 
                 {
                     intermediatePointY = yLow + z
                 }
@@ -291,7 +310,8 @@ function processIncomingMessage(message)
                 );
             }
     
-            function isValidMovementChecksFinal() {
+            function checkMoveB() 
+            {
                 for (var z = 0; z < proposedIntermediatePoints.length; z++) 
                 {
                     // console.log(proposedIntermediatePoints.length);
@@ -307,8 +327,9 @@ function processIncomingMessage(message)
                     }
                 }
                 return true;
+
             }
-            if (isValidMovementChecksFinal()) 
+            if (checkMoveB()) 
             {
                 counterTotalValidMoves++;
                 //This checks if currentSelection node is also first valid game move, allowing for correct start node selection validation
@@ -320,17 +341,17 @@ function processIncomingMessage(message)
     
                 if (nodeOrigination === "nodeEndpointA")
                 {
-                    nodeFirstMove = incomingBody;
+                    nodeFirstMove = requestBody;
                 } 
                 else if (nodeOrigination === "nodeEndpointA") 
                 {
                     //This records new endpoint as the last move, allowing for correct start node selection validation
-                    nodeLastMove = incomingBody;
+                    nodeLastMove = requestBody;
                 } 
                 else 
                 {
                     //This records new endpoint as the last move, allowing for correct start node selection validation
-                    nodeLastMove = incomingBody;
+                    nodeLastMove = requestBody;
                 }
     
                 for (var z = 0; z < proposedIntermediatePoints.length; z++) 
@@ -346,68 +367,99 @@ function processIncomingMessage(message)
                 proposedIntermediatePoints.length = 0;
     
                 //This adds new endpoint to existingPoints array
-                existingPoints.push(incomingBody);
+                existingPoints.push(requestBody);
+                //This will shift back and forth between 1 and 2            
+                whosTurn = (whosTurn % 2) + 1;
     
                 //Line is deemed valid, so we create a line
-                outgoing.msg = "VALID_END_NODE";
+                response.msg = "VALID_END_NODE";
     
-                //This will shift back and forth between 1 and 2            
-                turn = (turn % 2) + 1;
-    
-                outgoing.body.newLine = getLine(currentSelection, incomingBody);
-                outgoing.body.heading = "Player " + turn;
-                outgoing.body.message = null;
+                response.body.newLine = getLine(currentSelection, requestBody);
+                response.body.heading = "Player " + whosTurn;
+                response.body.message = null;
                 currentSelection = null;
     
-                moveSuccessfullyCompleted = true;
-            } 
+              
+                ++lineMade;
+                //console.log(lineMade);
+                y = 15 - lineMade
+            
+
+                //console.log(y);
+                
+            }  
+
+            else if (requestBody !== checkMoveA)
+            {
+                
+                
+                response.msg = "GAME_OVER";
+        
+                response.body.newLine = getLine(currentSelection, requestBody);
+                response.body.heading = "Game Over";
+                response.body.message = "Player "+ whosTurn + "Wins!";
+                currentSelection = null;
+                let gameDone = true;
+    
+                if (gameDone == true) 
+                { 
+                    whosTurn = (whosTurn % 2) + 1;
+                    //alert ("Game over! player " + whosTurn + " wins! \n Lets play again ")
+                        
+                    response.msg = "INVALID_START_NODE";
+        
+                    response.body.newLine = null;
+                    response.body.heading = "Game Overr";
+                    response.body.message = "Player "+ whosTurn + " Wins!";
+                    setTimeout(function(){
+                    window.location.reload(1);
+                    }, 4000);
+
+                    return response;
+                }
+                
+    
+            }
+
+          
             else 
             {
-                outgoing.msg = "INVALID_END_NODE";
-                outgoing.body.newLine = null;
-                outgoing.body.heading = "Player " + turn;
-                outgoing.body.message = "Invalid move!";
+                response.msg = "INVALID_END_NODE";
+                response.body.newLine = null;
+                response.body.heading = "Player " + whosTurn;
+                response.body.message = "Invalid move!";
                 currentSelection = null;
     
                 //This empties holding array
                 proposedIntermediatePoints.length = 0;
             }
-    
+
         }
-    
         else 
         {
     
-            outgoing.msg = "INVALID_END_NODE";
+            response.msg = "INVALID_END_NODE";
     
-            outgoing.body.newLine = null;
-            outgoing.body.heading = "Player " + turn;
-            outgoing.body.message = "Invalid move!";
+            response.body.newLine = null;
+            response.body.heading = "Player " + whosTurn;
+            response.body.message = "Invalid move!";
             currentSelection = null;
     
         }
-        // console.log(outgoing);
-        return outgoing;
+        console.log(response);
+        return response;
     
     }
 
     else 
     {
 
-        throw new Exception("Unknown message: " + incomingMessage);
+        throw new Exception("Unknown message: " + requestMessage);
 
     }
 
 }
 
-app.ports.request.subscribe((message) => {
-
-    //Take the message and turn the string into JSON
-    message = JSON.parse(message);
-
-    //Get the JSON response from the function based on the incoming json object
-    var responseObj = processIncomingMessage(message);
-
-    // Parse the message to determine a response, then respond:
-    app.ports.response.send(responseObj);
-});
+////////////////////////////////////////////////////////////////////////////
+// End of file
+////////////////////////////////////////////////////////////////////////////
